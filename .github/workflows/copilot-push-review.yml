@@ -671,6 +671,41 @@ jobs:
 
           echo "found=$found" >>"$GITHUB_OUTPUT"
 
+      # Prototype: one draft advisory per run on this repository, only when the
+      # review left inline comments. Draft advisories are visible to admins and
+      # invited collaborators only. Nothing from the review reaches the log.
+      - name: File a draft security advisory
+        if: steps.wait.outputs.found == '1' && steps.target.outputs.private == 'true' && steps.mode.outputs.mode != 'code'
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_REVIEW_PAT }}
+          PR: ${{ steps.pr.outputs.number }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          RANGE: ${{ steps.pr.outputs.range }}
+          SUBJECT: ${{ steps.gate.outputs.subject }}
+          MODE_LABEL: ${{ steps.mode.outputs.label }}
+        run: |
+          set -euo pipefail
+          comments="$RUNNER_TEMP/comments.json"
+          gh api "repos/$REVIEW_REPO/pulls/$PR/comments" \
+            --jq '[.[] | select(.user.login | test("copilot";"i"))]' >"$comments"
+          if [ "$(jq length "$comments")" = "0" ]; then
+            echo "No inline comments; no advisory filed."
+            exit 0
+          fi
+          review=$(gh api "repos/$REVIEW_REPO/pulls/$PR/reviews" \
+                     --jq '[.[] | select(.user.login | test("copilot";"i")) | .body] | join("\n\n")')
+          jq -n --arg summary "$MODE_LABEL of $SUBJECT $RANGE" \
+                --arg review "$review" --arg url "$PR_URL" \
+                --slurpfile c "$comments" '{
+              summary: $summary,
+              description: ("Copilot review on " + $url + "\n\n" + $review + "\n\n## Inline comments\n\n"
+                + ($c[0] | map("### `\(.path):\(.line // .original_line)`\n\n\(.body)\n") | join("\n"))),
+              vulnerabilities: null
+            }' >"$RUNNER_TEMP/advisory.json"
+          url=$(gh api "repos/$GITHUB_REPOSITORY/security-advisories" -X POST \
+                  --input "$RUNNER_TEMP/advisory.json" --jq .html_url)
+          printf '\nDraft advisory filed: %s\n' "$url" >>"$GITHUB_STEP_SUMMARY"
+
       # Always runs, so a timeout, a failure or a cancellation above still
       # cleans up rather than leaving scratch pull requests and branches behind.
       - name: Close the review pull request and delete the snapshot
