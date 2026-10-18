@@ -175,9 +175,9 @@ jobs:
             mode="${REQUESTED:-code}"
           fi
           case "$mode" in
-            code)     label="Code review";                     timeout=60 ;;
-            security) label="Security review";                 timeout=60 ;;
-            full)     label="Full review (code + security)";   timeout=60 ;;
+            code)     label="Code review";                     timeout=420 ;;
+            security) label="Security review";                 timeout=600 ;;
+            full)     label="Full review (code + security)";   timeout=600 ;;
             *)
               echo "unknown mode: $mode" >&2
               exit 1
