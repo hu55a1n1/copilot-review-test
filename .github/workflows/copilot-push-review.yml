@@ -696,11 +696,12 @@ jobs:
                      --jq '[.[] | select(.user.login | test("copilot";"i")) | .body] | join("\n\n")')
           jq -n --arg summary "$MODE_LABEL of $SUBJECT $RANGE" \
                 --arg review "$review" --arg url "$PR_URL" \
+                --arg pkg "${GITHUB_REPOSITORY#*/}" \
                 --slurpfile c "$comments" '{
               summary: $summary,
               description: ("Copilot review on " + $url + "\n\n" + $review + "\n\n## Inline comments\n\n"
                 + ($c[0] | map("### `\(.path):\(.line // .original_line)`\n\n\(.body)\n") | join("\n"))),
-              vulnerabilities: null
+              vulnerabilities: [{package: {ecosystem: "other", name: $pkg}}]
             }' >"$RUNNER_TEMP/advisory.json"
           url=$(gh api "repos/$GITHUB_REPOSITORY/security-advisories" -X POST \
                   --input "$RUNNER_TEMP/advisory.json" --jq .html_url)
